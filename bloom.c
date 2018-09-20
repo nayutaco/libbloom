@@ -21,7 +21,12 @@
 #include <unistd.h>
 
 #include "bloom.h"
+#if MURMURHASH_VERSION == 3
+#include <inttypes.h>
+#include "murmur3.h"
+#else
 #include "murmurhash2.h"
+#endif
 
 #define MAKESTRING(n) STRING(n)
 #define STRING(n) #n
@@ -32,7 +37,7 @@ inline static int test_bit_set_bit(unsigned char * buf,
 {
   unsigned int byte = x >> 3;
   unsigned char c = buf[byte];        // expensive memory access
-  unsigned int mask = 1 << (x % 8);
+  unsigned int mask = 1 << (x & 0x07);      //faster than (x % 8)
 
   if (c & mask) {
     return 1;
@@ -54,6 +59,19 @@ static int bloom_check_add(struct bloom * bloom,
   }
 
   int hits = 0;
+#if MURMURHASH_VERSION == 3
+  uint32_t bits = bloom->bytes << 3;
+  for (uint32_t i = 0; i < bloom->hashes; i++) {
+    uint32_t seed = (bloom->tweak + i * 0xFBA4C795);
+    uint32_t x;
+    MurmurHash3_x86_32(buffer, len, seed, &x);
+    x %= bits;
+    if (test_bit_set_bit(bloom->bf, x, add)) {
+      hits++;
+    }
+  }
+
+#else
   register unsigned int a = murmurhash2(buffer, len, 0x9747b28c);
   register unsigned int b = murmurhash2(buffer, len, a);
   register unsigned int x;
@@ -65,6 +83,7 @@ static int bloom_check_add(struct bloom * bloom,
       hits++;
     }
   }
+#endif
 
   if (hits == bloom->hashes) {
     return 1;                // 1 == element already in (or collision)
@@ -74,25 +93,39 @@ static int bloom_check_add(struct bloom * bloom,
 }
 
 
+#if MURMURHASH_VERSION != 3
 int bloom_init_size(struct bloom * bloom, int entries, double error,
                     unsigned int cache_size)
 {
   return bloom_init(bloom, entries, error);
 }
+#endif
 
 
+#if MURMURHASH_VERSION == 3
+int bloom_init(struct bloom * bloom, int entries, double error, uint32_t tweak)
+#else
 int bloom_init(struct bloom * bloom, int entries, double error)
+#endif
 {
   bloom->ready = 0;
 
+#if MURMURHASH_VERSION != 3 //test
   if (entries < 1000 || error == 0) {
     return 1;
   }
+#endif
 
   bloom->entries = entries;
   bloom->error = error;
 
   double num = log(bloom->error);
+#if MURMURHASH_VERSION == 3
+  int bits = (int)((double)entries * (-num / 0.480453013918201));  // ln(2)^2
+  bloom->bytes = bits >> 3;
+  bloom->tweak = tweak;
+  bloom->hashes = (int)(bloom->bytes * 8 / entries * 0.693147180559945);  // ln(2)
+#else
   double denom = 0.480453013918201; // ln(2)^2
   bloom->bpe = -(num / denom);
 
@@ -106,6 +139,7 @@ int bloom_init(struct bloom * bloom, int entries, double error)
   }
 
   bloom->hashes = (int)ceil(0.693147180559945 * bloom->bpe);  // ln(2)
+#endif
 
   bloom->bf = (unsigned char *)calloc(bloom->bytes, sizeof(unsigned char));
   if (bloom->bf == NULL) {
@@ -134,8 +168,12 @@ void bloom_print(struct bloom * bloom)
   printf("bloom at %p\n", (void *)bloom);
   printf(" ->entries = %d\n", bloom->entries);
   printf(" ->error = %f\n", bloom->error);
+#if MURMURHASH_VERSION == 3
+  printf(" ->tweak = %" PRIu32 "\n", bloom->tweak);
+#else
   printf(" ->bits = %d\n", bloom->bits);
   printf(" ->bits per elem = %f\n", bloom->bpe);
+#endif
   printf(" ->bytes = %d\n", bloom->bytes);
   printf(" ->hash functions = %d\n", bloom->hashes);
 }

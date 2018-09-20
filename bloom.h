@@ -8,6 +8,10 @@
 #ifndef _BLOOM_H
 #define _BLOOM_H
 
+#if MURMURHASH_VERSION == 3
+#include <stdint.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,14 +30,20 @@ struct bloom
   // modify any of these.
   int entries;
   double error;
+#if MURMURHASH_VERSION != 3
   int bits;
+#endif
   int bytes;
   int hashes;
-
+#if MURMURHASH_VERSION == 3
+  uint32_t tweak;
+#endif
   // Fields below are private to the implementation. These may go away or
   // change incompatibly at any moment. Client code MUST NOT access or rely
   // on these.
+#if MURMURHASH_VERSION != 3
   double bpe;
+#endif
   unsigned char * bf;
   int ready;
 };
@@ -66,15 +76,21 @@ struct bloom
  *     1 - on failure
  *
  */
+#if MURMURHASH_VERSION == 3
+int bloom_init(struct bloom * bloom, int entries, double error, uint32_t tweak);
+#else
 int bloom_init(struct bloom * bloom, int entries, double error);
+#endif
 
 
 /** ***************************************************************************
  * Deprecated, use bloom_init()
  *
  */
+#if MURMURHASH_VERSION != 3
 int bloom_init_size(struct bloom * bloom, int entries, double error,
                     unsigned int cache_size);
+#endif
 
 
 /** ***************************************************************************
