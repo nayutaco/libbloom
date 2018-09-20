@@ -1,4 +1,10 @@
-# murmur3
+# bloom filter murmur3
+
+## build
+
+```bash
+make MURMURHASH_VERSION=3
+```
 
 ## library
 

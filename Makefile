@@ -32,8 +32,8 @@ BUILD_OS := $(shell uname)
 BUILD=$(TOP)/build
 INC=-I$(TOP)
 ifeq ($(MURMURHASH_VERSION),3)
-INC+=-I$(MURMURHASH3_PATH)
-HASHOBJ=
+INC+=-I$(TOP)/murmur3/murmur3
+HASHOBJ=$(TOP)/murmur3/murmur3/murmur3.o
 else
 INC+=-I$(TOP)/murmur2
 HASHOBJ=$(BUILD)/murmurhash2.o
@@ -99,13 +99,13 @@ all: $(BUILD)/$(SO_VERSIONED) $(BUILD)/libbloom.a
 
 $(BUILD)/$(SO_VERSIONED): $(HASHOBJ) $(BUILD)/bloom.o
 	(cd $(BUILD) && \
-	    $(COM) $(LDFLAGS) bloom.o $(notdir $(HASHOBJ)) -shared $(LIB) $(MAC) \
+	    $(COM) $(LDFLAGS) bloom.o $(HASHOBJ) -shared $(LIB) $(MAC) \
 		$(LD_SONAME) -o $(SO_VERSIONED) && \
 		rm -f $(BLOOM_SONAME) && ln -s $(SO_VERSIONED) $(BLOOM_SONAME) && \
 		rm -f libbloom.$(SO) && ln -s $(BLOOM_SONAME) libbloom.$(SO))
 
 $(BUILD)/libbloom.a: $(HASHOBJ) $(BUILD)/bloom.o
-	(cd $(BUILD) && ar rcs libbloom.a bloom.o $(notdir $(HASHOBJ)))
+	(cd $(BUILD) && ar rcs libbloom.a bloom.o $(HASHOBJ))
 
 $(BUILD)/test-libbloom: $(TESTDIR)/test.c $(BUILD)/$(SO_VERSIONED)
 	$(COM) -I$(TOP) -c $(TESTDIR)/test.c -o $(BUILD)/test.o
@@ -124,8 +124,11 @@ $(BUILD)/murmurhash2.o: murmur2/MurmurHash2.c murmur2/murmurhash2.h
 	mkdir -p $(BUILD)
 	$(COM) $(INC) -c murmur2/MurmurHash2.c -o $(BUILD)/murmurhash2.o
 
+$(TOP)/murmur3/murmur3/murmur3.o:
+	make CFLAGS=-fPIC -C murmur3/murmur3
+
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) $(HASHOBJ)
 
 test: $(BUILD)/test-libbloom $(BUILD)/test-basic
 	$(BUILD)/test-basic
